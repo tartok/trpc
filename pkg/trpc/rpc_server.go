@@ -1,7 +1,6 @@
 package trpc
 
 import (
-	"bufio"
 	"encoding/json"
 	"errors"
 	"net"
@@ -10,23 +9,16 @@ import (
 
 type RpcHandler func(rpc *RpcServer, method string, params json.RawMessage) (any, any, bool, error)
 
-type rpcMessage struct {
-	request *Request
-	w       func(p []byte) (n int, err error)
-}
-
 type RpcServer struct {
 	sync.Mutex
 	opt       ServerOptions
-	inQueue   chan *rpcMessage
+	transport TransportServer
 	handlers  []RpcHandler
 	listeners []net.Listener
 }
 
-func NewRpcServer(transport Transport, url string, o ...Lister[ServerOptions]) (*RpcServer, error) {
-	var r = RpcServer{inQueue: make(chan *rpcMessage, 100)}
-	r.opt.Url = url
-	r.opt.Transport = transport
+func NewRpcServer(transport TransportServer, o ...Lister[ServerOptions]) (*RpcServer, error) {
+	var r = RpcServer{transport: transport}
 	err := AddOptions(&r.opt, o...)
 	if err != nil {
 		return nil, err
@@ -34,67 +26,37 @@ func NewRpcServer(transport Transport, url string, o ...Lister[ServerOptions]) (
 	go func() {
 		for {
 			select {
-			case msg := <-r.inQueue:
+			case msg, ok := <-transport.Get():
+				if !ok {
+					return
+				}
+				var req Request
+				err := json.Unmarshal(msg.Request, &req)
+				if err != nil {
+					continue
+				}
 				for _, handler := range r.handlers {
 					if handler != nil {
-						res, log, ok, err := handler(&r, msg.request.Method, msg.request.Params)
+						res, log, ok, err := handler(&r, req.Method, req.Params)
 						if !ok {
 							continue
 						}
 						var resp Response
 						if err != nil {
 							if errors.As(err, new(*RpcError)) {
-								resp = NewRpcError(msg.request.Id, err.(*RpcError).Code, err.(*RpcError).Message, log)
+								resp = NewRpcError(req.Id, err.(*RpcError).Code, err.(*RpcError).Message, log)
 							} else {
-								resp = NewRpcError(msg.request.Id, -32603, err.Error(), log)
+								resp = NewRpcError(req.Id, -32603, err.Error(), log)
 							}
 						} else {
-							resp = NewRpcSuccess(msg.request.Id, res)
+							resp = NewRpcSuccess(req.Id, res)
 						}
-						d := resp.Bytes()
-						d = append(d, 0)
-						_, _ = msg.w(d)
+						_, _ = msg.Writer.Write(resp.Bytes())
 					}
 				}
 			}
 		}
 	}()
-	switch r.opt.Transport {
-	case TransportTcp:
-		l, err := net.Listen("tcp", r.opt.Url)
-		if err != nil {
-			return nil, err
-		}
-		r.listeners = append(r.listeners, l)
-		go func() {
-			for {
-				conn, err := l.Accept()
-				if err != nil {
-					return
-				}
-				go func(conn net.Conn) {
-					reader := bufio.NewReader(conn)
-					var m sync.Mutex
-					for {
-						data, err := reader.ReadBytes(0)
-						if err != nil {
-							return
-						}
-						var req Request
-						err = json.Unmarshal(data[:len(data)-1], &req)
-						if err != nil {
-							continue
-						}
-						r.inQueue <- &rpcMessage{request: &req, w: func(p []byte) (n int, err error) {
-							m.Lock()
-							defer m.Unlock()
-							return conn.Write(p)
-						}}
-					}
-				}(conn)
-			}
-		}()
-	}
 	return &r, nil
 }
 func (r *RpcServer) Close() error {
@@ -112,24 +74,24 @@ func (r *RpcServer) RegisterHandler(handler RpcHandler) {
 }
 
 type ServerOptions struct {
-	Url       string
-	Transport Transport
+	//Url       string
+	//Transport Transport
 }
 type ServerBuilder struct {
 	OptionsBuilder[ClientOptions]
 }
 
-func (o *ServerBuilder) Url(url string) *ServerBuilder {
-	o.Opts = append(o.Opts, func(opts *ClientOptions) error {
-		opts.Url = url
-		return nil
-	})
-	return o
-}
-func (o *ServerBuilder) Transport(t Transport) *ServerBuilder {
-	o.Opts = append(o.Opts, func(opts *ClientOptions) error {
-		opts.Transport = t
-		return nil
-	})
-	return o
-}
+//func (o *ServerBuilder) Url(url string) *ServerBuilder {
+//	o.Opts = append(o.Opts, func(opts *ClientOptions) error {
+//		opts.Url = url
+//		return nil
+//	})
+//	return o
+//}
+//func (o *ServerBuilder) Transport(t Transport) *ServerBuilder {
+//	o.Opts = append(o.Opts, func(opts *ClientOptions) error {
+//		opts.Transport = t
+//		return nil
+//	})
+//	return o
+//}

@@ -21,7 +21,7 @@ func (req *Request) Bytes() []byte {
 
 func NewRequest(id Id, method string, params any) *Request {
 	if id == nil {
-		id = bson.NewObjectID()
+		id = bson.NewObjectID().Hex()
 	}
 	p, _ := json.Marshal(params)
 	r := Request{
@@ -33,6 +33,9 @@ func NewRequest(id Id, method string, params any) *Request {
 	return &r
 }
 
+type RespId struct {
+	Id Id `json:"id"`
+}
 type Response struct {
 	Jsonrpc string    `json:"jsonrpc"`
 	Id      Id        `json:"id"`

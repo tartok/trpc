@@ -1,13 +1,5 @@
 package trpc
 
-type Transport string
-
-const (
-	TransportTcp       Transport = "tcp"
-	TransportHttp      Transport = "http"
-	TransportWebsocket Transport = "websocket"
-)
-
 type OptionsBuilder[T any] struct {
 	Opts []func(*T) error
 }
