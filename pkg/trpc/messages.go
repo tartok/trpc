@@ -40,6 +40,11 @@ type Response struct {
 	Error   *RpcError `json:"error,omitempty"`
 }
 
+func (resp *Response) Bytes() []byte {
+	b, _ := json.Marshal(resp)
+	return b
+}
+
 func NewRpcSuccess(id Id, r any) Response {
 	return Response{Jsonrpc: "2.0", Id: id, Result: r}
 }
