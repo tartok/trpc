@@ -2,6 +2,7 @@ package trpc
 
 import (
 	"encoding/json"
+	"errors"
 	"sync"
 )
 
@@ -9,86 +10,46 @@ type queueChan struct {
 	Req  *Request
 	Resp chan []byte
 }
-
+type TransportFunc func(r *Request, open bool) (TransportClient, error)
 type RpcClient struct {
 	sync.Mutex
-	queue     []*queueChan
 	opt       ClientOptions
-	transport func(r *Request) (TransportClient, error)
-	wait      chan struct{}
+	transport TransportFunc
 }
 
-func NewRpcClient(transport func(r *Request) (TransportClient, error), o ...Lister[ClientOptions]) (*RpcClient, error) {
-	var r = RpcClient{transport: transport, wait: make(chan struct{}, 100)}
+func NewRpcClient(transport TransportFunc, o ...Lister[ClientOptions]) (*RpcClient, error) {
+	var r = RpcClient{transport: transport}
 	err := AddOptions(&r.opt, o...)
 	if err != nil {
 		return nil, err
 	}
-
-	go func() {
-		for {
-			<-r.wait
-			tr, err := r.transport(nil)
-			if err != nil {
-				continue
-			}
-			buff := <-tr.Receive()
-			var result RespId
-			err = json.Unmarshal(buff, &result)
-			if err != nil {
-				continue
-			}
-			r.Lock()
-			for _, q := range r.queue {
-				if q.Req != nil && q.Req.Id == result.Id {
-					q.Req = nil
-					q.Resp <- buff
-				}
-			}
-			r.Unlock()
-		}
-	}()
 	return &r, nil
 }
-func (r *RpcClient) send(req *Request) <-chan []byte {
-	r.Lock()
-	defer r.Unlock()
-	for _, q := range r.queue {
-		if q.Req == nil {
-			q.Req = req
-			return q.Resp
-		}
-	}
-	q := queueChan{
-		Req:  req,
-		Resp: make(chan []byte),
-	}
-	r.queue = append(r.queue, &q)
-	return q.Resp
-}
-func (r *RpcClient) Request(method string, params any, res any, customOptions ...Lister[ClientOptions]) (*Response, error) {
+func (r *RpcClient) Request(method string, params any, res any, customOptions ...Lister[ClientOptions]) (*Request, *Response, error) {
 	options := r.opt
 	err := AddOptions(&options, customOptions...)
 
 	request := NewRequest(nil, method, params)
-	c := r.send(request)
-
-	tr, err := r.transport(request)
+	tr, err := r.transport(request, true)
 	if err != nil {
-		return nil, err
+		return request, nil, err
 	}
-	r.wait <- struct{}{}
 	_, err = tr.Write(request.Bytes())
 	if err != nil {
-		return nil, err
+		_, _ = r.transport(request, false)
+		return request, nil, err
 	}
-	data := <-c
+	data, ok := <-tr.Receive()
+	if !ok {
+		_, _ = r.transport(request, false)
+		return request, nil, errors.New("transport closed")
+	}
 	var result Response
 	if res != nil {
 		result.Result = res
 	}
 	err = json.Unmarshal(data, &result)
-	return &result, nil
+	return request, &result, err
 }
 
 type ClientOptions struct {

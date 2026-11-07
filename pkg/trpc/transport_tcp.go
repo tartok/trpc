@@ -66,7 +66,11 @@ func NewTcpClient(url string) (*TcpClient, error) {
 			if err != nil {
 				return
 			}
-			t.c <- b[:len(b)-1]
+			t.Lock()
+			if t.c != nil {
+				t.c <- b[:len(b)-1]
+			}
+			t.Unlock()
 		}
 	}()
 	return &t, nil
@@ -84,5 +88,6 @@ func (t *TcpClient) Close() error {
 	t.Lock()
 	defer t.Unlock()
 	close(t.c)
+	t.c = nil
 	return t.conn.Close()
 }
