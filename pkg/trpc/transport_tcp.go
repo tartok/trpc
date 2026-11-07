@@ -2,6 +2,7 @@ package trpc
 
 import (
 	"bufio"
+	"errors"
 	"net"
 	"sync"
 )
@@ -26,15 +27,19 @@ func (t *TcpServer) Listen() error {
 		}
 		go func(conn net.Conn) {
 			reader := bufio.NewReader(conn)
+			var index int
 			w := NewWriter(func(p []byte) (n int, err error) {
-				return conn.Write(append(p, 0))
+				err = WriteData(conn, index, p)
+				return len(p), err
 			})
+			var data []byte
+			var err error
 			for {
-				data, err := reader.ReadBytes(0)
+				data, index, err = ReadData(reader)
 				if err != nil {
 					return
 				}
-				t.c <- &RpcMessage{Request: data[:len(data)-1], Writer: w}
+				t.c <- &RpcMessage{Request: data, Writer: w}
 			}
 		}(conn)
 	}
@@ -62,28 +67,38 @@ func NewTcpClient(url string) (*TcpClient, error) {
 	go func() {
 		r := bufio.NewReader(conn)
 		for {
-			b, err := r.ReadBytes(0)
+			b, _, err := ReadData(r)
 			if err != nil {
 				return
 			}
 			t.Lock()
 			if t.c != nil {
-				t.c <- b[:len(b)-1]
+				t.c <- b
 			}
 			t.Unlock()
 		}
 	}()
 	return &t, nil
 }
-func (t *TcpClient) Write(p []byte) (n int, err error) {
+func (t *TcpClient) write(p []byte) (n int, err error) {
 	t.Lock()
 	defer t.Unlock()
-	return t.conn.Write(append(p, 0))
+	err = WriteData(t.conn, 0, p)
+	return len(p), err
 }
 
-func (t *TcpClient) Receive() <-chan []byte {
-	return t.c
+func (t *TcpClient) Request(data []byte) (resp []byte, err error) {
+	_, err = t.write(data)
+	if err != nil {
+		return
+	}
+	r, ok := <-t.c
+	if !ok {
+		return nil, errors.New("transport closed")
+	}
+	return r, nil
 }
+
 func (t *TcpClient) Close() error {
 	t.Lock()
 	defer t.Unlock()

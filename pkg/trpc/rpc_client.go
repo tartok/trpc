@@ -2,7 +2,6 @@ package trpc
 
 import (
 	"encoding/json"
-	"errors"
 	"sync"
 )
 
@@ -34,16 +33,16 @@ func (r *RpcClient) Request(method string, params any, res any, customOptions ..
 	if err != nil {
 		return request, nil, err
 	}
-	_, err = tr.Write(request.Bytes())
+	data, err := tr.Request(request.Bytes())
 	if err != nil {
 		_, _ = r.transport(request, false)
 		return request, nil, err
 	}
-	data, ok := <-tr.Receive()
-	if !ok {
-		_, _ = r.transport(request, false)
-		return request, nil, errors.New("transport closed")
-	}
+	//	data, ok := <-tr.Receive()
+	//	if !ok {
+	//		_, _ = r.transport(request, false)
+	//		return request, nil, errors.New("transport closed")
+	//	}
 	var result Response
 	if res != nil {
 		result.Result = res
