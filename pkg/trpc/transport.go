@@ -14,8 +14,6 @@ type TransportServer interface {
 	Get() <-chan *RpcMessage
 }
 type TransportClient interface {
-	//io.Writer
-	//Receive() <-chan []byte
 	Request(data []byte) (resp []byte, err error)
 }
 

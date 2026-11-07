@@ -3,7 +3,6 @@ package trpc
 import (
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -31,9 +30,9 @@ func TestRpcServer(t *testing.T) {
 	srv.RegisterHandler(func(rpc *RpcServer, method string, params json.RawMessage) (any, any, bool, error) {
 		//fmt.Println(method, string(params))
 		//time.Sleep(time.Microsecond)
-		if rand.Intn(10) > 7 {
-			time.Sleep(time.Microsecond)
-		}
+		//if rand.Intn(10) > 7 {
+		//	time.Sleep(time.Microsecond)
+		//}
 		//for i := 0; i < rand.Intn(1000); i++ {
 		//
 		//}

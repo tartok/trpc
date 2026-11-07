@@ -41,20 +41,21 @@ func TestNewRpc(t *testing.T) {
 	//p = struct {
 	//	P1 string `json:"p_1"`
 	//}{P1: "param 1"}
-	var c, e int32
+	var c, e, p int32
 	go func() {
 		for {
 			time.Sleep(1 * time.Second)
 			cc := atomic.LoadInt32(&c)
 			ee := atomic.LoadInt32(&e)
-			fmt.Println("c:", cc, float64(ee)*100/float64(cc))
+			fmt.Println("c:", cc, float64(ee)*100/float64(cc), cc-p)
+			p = cc
 		}
 	}()
 	w := make(chan struct{})
-	for i := range 1000 {
+	for i := range 20 {
 		go func() {
 			for {
-				<-w
+				//<-w
 				var s string
 				req, resp, err := r.Request("test", i, &s)
 				if err != nil {

@@ -27,18 +27,16 @@ func (t *TcpServer) Listen() error {
 		}
 		go func(conn net.Conn) {
 			reader := bufio.NewReader(conn)
-			var index int
-			w := NewWriter(func(p []byte) (n int, err error) {
-				err = WriteData(conn, index, p)
-				return len(p), err
-			})
-			var data []byte
-			var err error
 			for {
-				data, index, err = ReadData(reader)
+				data, index, err := ReadData(reader)
 				if err != nil {
 					return
 				}
+				w := NewWriter(func(p []byte) (n int, err error) {
+					err = WriteData(conn, index, p)
+					return len(p), err
+				})
+
 				t.c <- &RpcMessage{Request: data, Writer: w}
 			}
 		}(conn)
@@ -52,10 +50,15 @@ func (t *TcpServer) Get() <-chan *RpcMessage {
 	return t.c
 }
 
+type IndexChan struct {
+	C    chan []byte
+	Busy bool
+}
 type TcpClient struct {
 	sync.Mutex
 	conn net.Conn
-	c    chan []byte
+	//c    chan []byte
+	c []*IndexChan
 }
 
 func NewTcpClient(url string) (*TcpClient, error) {
@@ -63,36 +66,63 @@ func NewTcpClient(url string) (*TcpClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	t := TcpClient{conn: conn, c: make(chan []byte)}
+	t := TcpClient{conn: conn}
 	go func() {
 		r := bufio.NewReader(conn)
 		for {
-			b, _, err := ReadData(r)
+			b, index, err := ReadData(r)
 			if err != nil {
+				_ = t.Close()
 				return
 			}
+			//fmt.Println("read:", index)
 			t.Lock()
-			if t.c != nil {
-				t.c <- b
+			c := t.getC(index)
+			if c != nil {
+				c <- b
 			}
 			t.Unlock()
 		}
 	}()
 	return &t, nil
 }
-func (t *TcpClient) write(p []byte) (n int, err error) {
+func (t *TcpClient) getC(index int) chan []byte {
+	if index >= len(t.c) {
+		return nil
+	}
+	i := t.c[index]
+	i.Busy = false
+	return i.C
+}
+func (t *TcpClient) newC() (int, chan []byte) {
 	t.Lock()
 	defer t.Unlock()
-	err = WriteData(t.conn, 0, p)
+	for i, c := range t.c {
+		if !c.Busy {
+			c.Busy = true
+			return i, c.C
+		}
+	}
+	i := len(t.c)
+	c := make(chan []byte)
+	t.c = append(t.c, &IndexChan{C: c, Busy: true})
+	return i, c
+}
+func (t *TcpClient) write(index int, p []byte) (n int, err error) {
+	t.Lock()
+	defer t.Unlock()
+	err = WriteData(t.conn, index, p)
 	return len(p), err
 }
 
 func (t *TcpClient) Request(data []byte) (resp []byte, err error) {
-	_, err = t.write(data)
+	index, c := t.newC()
+	//fmt.Println("newC", index)
+	_, err = t.write(index, data)
 	if err != nil {
 		return
 	}
-	r, ok := <-t.c
+	r, ok := <-c
 	if !ok {
 		return nil, errors.New("transport closed")
 	}
@@ -102,7 +132,9 @@ func (t *TcpClient) Request(data []byte) (resp []byte, err error) {
 func (t *TcpClient) Close() error {
 	t.Lock()
 	defer t.Unlock()
-	close(t.c)
-	t.c = nil
+	for _, indexChan := range t.c {
+		close(indexChan.C)
+	}
+	t.c = t.c[:0]
 	return t.conn.Close()
 }
