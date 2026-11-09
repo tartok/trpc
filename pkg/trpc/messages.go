@@ -2,8 +2,9 @@ package trpc
 
 import (
 	"encoding/json"
-
-	"go.mongodb.org/mongo-driver/v2/bson"
+	"strconv"
+	"sync/atomic"
+	"time"
 )
 
 type Id = any
@@ -21,7 +22,7 @@ func (req *Request) Bytes() []byte {
 
 func NewRequest(id Id, method string, params any) *Request {
 	if id == nil {
-		id = bson.NewObjectID().Hex()
+		id = GetId()
 	}
 	p, _ := json.Marshal(params)
 	r := Request{
@@ -53,4 +54,10 @@ func NewRpcSuccess(id Id, r any) Response {
 }
 func NewRpcError(id Id, code int, message string, log any) Response {
 	return Response{Jsonrpc: "2.0", Id: id, Error: &RpcError{Code: code, Message: message, Log: log}}
+}
+
+var id int64
+
+func GetId() string {
+	return strconv.FormatInt(time.Now().UnixNano()+atomic.AddInt64(&id, 1), 16)
 }

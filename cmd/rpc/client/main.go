@@ -37,7 +37,7 @@ func main() {
 	//	}
 	//}()
 	wg := sync.WaitGroup{}
-	for range 1 {
+	for i := 0; i < 1; i++ {
 		wg.Go(func() {
 			for {
 				//<-w

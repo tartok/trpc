@@ -21,7 +21,7 @@ func TestNewRpc(t *testing.T) {
 		defer m.Unlock()
 		if open {
 			if tcp == nil {
-				tcp, err = NewTcpClient("localhost:123")
+				tcp, err = NewTcpClient("localhost:123", nil)
 				if err != nil {
 					return nil, err
 				}
@@ -52,7 +52,7 @@ func TestNewRpc(t *testing.T) {
 		}
 	}()
 	w := make(chan struct{})
-	for i := range 20 {
+	for i := 0; i < 20; i++ {
 		go func() {
 			for {
 				//<-w

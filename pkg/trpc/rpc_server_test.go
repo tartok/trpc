@@ -14,8 +14,8 @@ func TestRpcServer(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tcp.Close()
-	go tcp.Listen()
-	srv, err := NewRpcServer(tcp)
+	go tcp.Listen(nil)
+	srv, err := NewRpcServer([]TransportServer{tcp})
 	if err != nil {
 		t.Fatal(err)
 	}
