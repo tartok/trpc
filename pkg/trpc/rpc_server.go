@@ -11,52 +11,61 @@ type RpcHandler func(rpc *RpcServer, method string, params json.RawMessage) (any
 
 type RpcServer struct {
 	sync.Mutex
-	opt       ServerOptions
-	transport TransportServer
-	handlers  []RpcHandler
-	listeners []net.Listener
+	opt        ServerOptions
+	transports []TransportServer
+	handlers   []RpcHandler
+	listeners  []net.Listener
 }
 
-func NewRpcServer(transport TransportServer, o ...Lister[ServerOptions]) (*RpcServer, error) {
-	var r = RpcServer{transport: transport}
+func NewRpcServer(transports []TransportServer, o ...Lister[ServerOptions]) (*RpcServer, error) {
+	var r = RpcServer{transports: transports}
 	err := AddOptions(&r.opt, o...)
 	if err != nil {
 		return nil, err
 	}
-	go func() {
-		for {
-			select {
-			case msg, ok := <-transport.Get():
-				if !ok {
-					return
-				}
-				var req Request
-				err := json.Unmarshal(msg.Request, &req)
-				if err != nil {
-					continue
-				}
-				for _, handler := range r.handlers {
-					if handler != nil {
-						res, log, ok, err := handler(&r, req.Method, req.Params)
-						if !ok {
-							continue
-						}
-						var resp Response
-						if err != nil {
-							if errors.As(err, new(*RpcError)) {
-								resp = NewRpcError(req.Id, err.(*RpcError).Code, err.(*RpcError).Message, log)
-							} else {
-								resp = NewRpcError(req.Id, -32603, err.Error(), log)
+	for _, transport := range transports {
+		go func() {
+			for {
+				select {
+				case msg, ok := <-transport.Get():
+					if !ok {
+						return
+					}
+					var req Request
+					err := json.Unmarshal(msg.Request, &req)
+					if err != nil {
+						continue
+					}
+					h := false
+					for _, handler := range r.handlers {
+						if handler != nil {
+							res, log, ok, err := handler(&r, req.Method, req.Params)
+							if !ok {
+								continue
 							}
-						} else {
-							resp = NewRpcSuccess(req.Id, res)
+							var resp Response
+							if err != nil {
+								if errors.As(err, new(*RpcError)) {
+									resp = NewRpcError(req.Id, err.(*RpcError).Code, err.(*RpcError).Message, log)
+								} else {
+									resp = NewRpcError(req.Id, -32603, err.Error(), log)
+								}
+							} else {
+								resp = NewRpcSuccess(req.Id, res)
+							}
+							_, _ = msg.Writer.Write(resp.Bytes())
+							h = true
+							break
 						}
+					}
+					if !h {
+						resp := NewRpcError(req.Id, -32601, "Method not found", nil)
 						_, _ = msg.Writer.Write(resp.Bytes())
 					}
 				}
 			}
-		}
-	}()
+		}()
+	}
 	return &r, nil
 }
 func (r *RpcServer) Close() error {

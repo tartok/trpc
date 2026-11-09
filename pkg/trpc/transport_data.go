@@ -7,20 +7,6 @@ import (
 	"io"
 )
 
-type TransportData struct {
-	Index int16
-	Size  int32
-	Crc1  byte
-	Data  []byte
-	Crc2  byte
-	r     io.Reader
-	w     io.Writer
-}
-
-func NewTransportReader(r io.Reader) *TransportData {
-	return &TransportData{r: r}
-}
-
 func Crc(data []byte) byte {
 	var c byte
 	for _, b := range data {
@@ -29,7 +15,13 @@ func Crc(data []byte) byte {
 	return c
 }
 
-func ReadData(r io.Reader) ([]byte, int, error) {
+func ReadData(r io.Reader, checkKey func(r io.Reader) error) ([]byte, int, error) {
+	if checkKey != nil {
+		err := checkKey(r)
+		if err != nil {
+			return nil, -1, err
+		}
+	}
 	header := make([]byte, 7)
 	if _, err := io.ReadFull(r, header); err != nil {
 		return nil, -1, err
@@ -66,10 +58,12 @@ func ReadData(r io.Reader) ([]byte, int, error) {
 	return data, index, nil
 }
 
-func WriteData(w io.Writer, index int, data []byte) error {
+func WriteData(w io.Writer, index int, key, data []byte) error {
 	buff := bytes.NewBuffer(make([]byte, 0, len(data)+8))
 
-	err := binary.Write(buff, binary.BigEndian, int16(index))
+	_, err := w.Write(key)
+
+	err = binary.Write(buff, binary.BigEndian, int16(index))
 	if err != nil {
 		return err
 	}
