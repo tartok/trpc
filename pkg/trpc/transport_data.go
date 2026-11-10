@@ -7,6 +7,8 @@ import (
 	"io"
 )
 
+var MaxRpcMessageSize = 16 * 1 << 20
+
 func Crc(data []byte) byte {
 	var c byte
 	for _, b := range data {
@@ -35,7 +37,7 @@ func ReadData(r io.Reader, checkKey func(r io.Reader) error) ([]byte, int, error
 		return nil, -1, errors.New("crc1 error")
 	}
 
-	if size < 0 {
+	if size < 0 || size > MaxRpcMessageSize {
 		return nil, index, errors.New("invalid data size")
 	}
 
