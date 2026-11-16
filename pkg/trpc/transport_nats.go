@@ -1,9 +1,8 @@
 package trpc
 
 import (
-	"bytes"
-	"io"
-	"net/http"
+	"encoding/json"
+	"time"
 
 	"github.com/nats-io/nats.go"
 )
@@ -57,33 +56,46 @@ func (t *NatsServer) Get() <-chan *RpcMessage {
 }
 
 type NatsClient struct {
-	conn *http.Client
-	url  string
+	nc            *nats.Conn
+	subjectPrefix string
+	timeout       time.Duration
 }
 
-func NewNatsClient(url string) (*NatsClient, error) {
-	conn := &http.Client{}
-	t := NatsClient{conn: conn, url: url}
+func NewNatsClient(nc *nats.Conn, subjectPrefix string, timeout time.Duration) (*NatsClient, error) {
+	t := NatsClient{nc: nc, subjectPrefix: subjectPrefix, timeout: timeout}
 	return &t, nil
 }
 
 func (t *NatsClient) Request(data []byte) ([]byte, error) {
-	req, err := http.NewRequest(http.MethodPost, t.url, bytes.NewReader(data))
+	var m struct {
+		Method string `json:"method"`
+	}
+	err := json.Unmarshal(data, &m)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := t.conn.Do(req)
+	msg, err := t.nc.Request(t.subjectPrefix+"."+m.Method, data, t.timeout)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	return body, nil
+	return msg.Data, nil
+	//req, err := http.NewRequest(http.MethodPost, t.url, bytes.NewReader(data))
+	//if err != nil {
+	//	return nil, err
+	//}
+	//resp, err := t.conn.Do(req)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//defer resp.Body.Close()
+	//body, err := io.ReadAll(resp.Body)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//return body, nil
 }
 
 func (t *NatsClient) Close() error {
+	t.nc.Close()
 	return nil
 }
