@@ -76,7 +76,7 @@ func (t *NatsClient) Request(data []byte) ([]byte, error) {
 	msg, err := t.nc.Request(t.subjectPrefix+"."+m.Method, data, t.timeout)
 	if err != nil {
 		if errors.Is(err, nats.ErrNoResponders) {
-			resp := NewRpcError(m.Id, -32601, "method not found", nil)
+			resp := NewRpcError(m.Id, -32601, "method not found (transport)", nil)
 			return resp.Bytes(), nil
 		}
 		return nil, err
