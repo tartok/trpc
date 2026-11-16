@@ -3,7 +3,6 @@ package trpc
 import (
 	"encoding/json"
 	"errors"
-	"net"
 	"sync"
 )
 
@@ -14,7 +13,6 @@ type RpcServer struct {
 	opt        ServerOptions
 	transports []TransportServer
 	handlers   []RpcHandler
-	listeners  []net.Listener
 }
 
 func NewRpcServer(transports []TransportServer, o ...Lister[ServerOptions]) (*RpcServer, error) {
@@ -71,9 +69,6 @@ func NewRpcServer(transports []TransportServer, o ...Lister[ServerOptions]) (*Rp
 func (r *RpcServer) Close() error {
 	r.Lock()
 	defer r.Unlock()
-	for _, l := range r.listeners {
-		_ = l.Close()
-	}
 	return nil
 }
 func (r *RpcServer) RegisterHandler(handler RpcHandler) {

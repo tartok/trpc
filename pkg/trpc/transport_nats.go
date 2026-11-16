@@ -2,6 +2,7 @@ package trpc
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -67,15 +68,17 @@ func NewNatsClient(nc *nats.Conn, subjectPrefix string, timeout time.Duration) (
 }
 
 func (t *NatsClient) Request(data []byte) ([]byte, error) {
-	var m struct {
-		Method string `json:"method"`
-	}
+	var m Request
 	err := json.Unmarshal(data, &m)
 	if err != nil {
 		return nil, err
 	}
 	msg, err := t.nc.Request(t.subjectPrefix+"."+m.Method, data, t.timeout)
 	if err != nil {
+		if errors.Is(err, nats.ErrNoResponders) {
+			resp := NewRpcError(m.Id, -32601, "method not found", nil)
+			return resp.Bytes(), nil
+		}
 		return nil, err
 	}
 	return msg.Data, nil
