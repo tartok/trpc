@@ -40,8 +40,8 @@ type RespId struct {
 type Response struct {
 	Jsonrpc string    `json:"jsonrpc"`
 	Id      Id        `json:"id"`
-	Result  any       `json:"result,omitempty"`
-	Error   *RpcError `json:"error,omitempty"`
+	Result  any       `json:"result,omitempty" bson:"result,omitempty"`
+	Error   *RpcError `json:"error,omitempty" bson:"error,omitempty"`
 }
 
 func (resp *Response) Bytes() []byte {

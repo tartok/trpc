@@ -5,7 +5,7 @@ import "fmt"
 type RpcError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
-	Log     any    `json:"log"`
+	Log     any    `json:"log,omitempty" bson:"log,omitempty"`
 }
 
 func (r RpcError) Error() string {
